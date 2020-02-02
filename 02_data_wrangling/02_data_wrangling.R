@@ -207,20 +207,80 @@ bike_orderlines_prices %>%
 
 
 
-
-
 # 5.0 Grouping & Summarizing with group_by() and summarize() ----
 
+# Basics
+bike_orderlines_tbl %>% 
+    summarise(
+        revenue = sum(total_price)
+    )
 
+bike_orderlines_tbl %>% 
+    group_by(category_1) %>% 
+    summarise(revenue = sum(total_price))
+
+bike_orderlines_tbl %>% 
+    group_by(category_1, category_2, frame_material) %>% 
+    summarise(revenue = sum(total_price)) %>% 
+    ungroup() %>% 
+    arrange(desc(revenue))
+
+# Summary functions
+bike_orderlines_tbl %>% 
+    group_by(category_1, category_2) %>% 
+    summarize(
+        count = n(), 
+        avg   = mean(total_price), 
+        med   = median(total_price),
+        sd    = sd(total_price), 
+        min   = min(total_price), 
+        max   = max(total_price)
+    ) %>% 
+    ungroup() %>%
+    arrange(desc(count))
+
+# summarize_all() - detect missing values
+bike_orderlines_missing <- bike_orderlines_tbl %>% 
+    mutate(total_price = c(rep(NA, 4), total_price[5:nrow(.)]))
+    
+bike_orderlines_missing %>% 
+    summarise_all(~ sum(is.na(.)))
+
+bike_orderlines_missing %>% 
+    summarise_all(~ sum(is.na(.)) / length(.))
+
+bike_orderlines_missing %>% 
+    filter(!is.na(total_price))
 
 
 # 6.0 Renaming columns with rename() and set_names() ----
 
 # 6.1 rename: One column at a time ----
 
+bikeshop_revenue_tbl <- bike_orderlines_tbl %>% 
+    select(bikeshop_name, category_1, total_price) %>% 
+    
+    group_by(bikeshop_name, category_1) %>% 
+    summarize(sales = sum(total_price)) %>% 
+    ungroup() %>% 
+    
+    arrange(desc(sales))
+
+bikeshop_revenue_tbl %>% 
+    rename(
+        `Bikeshop Name` = bikeshop_name, 
+        `Primary Category` = category_1, 
+        Sales = sales
+    )
+
 
 # 6.2 set_names: All columns at once ---
 
+bikeshop_revenue_tbl %>% 
+    set_names(c("Bikeshop Name", "Primary Category", "Sales"))
+
+bikeshop_revenue_tbl %>% 
+    set_names(names(.) %>% str_replace("_", " ") %>% str_to_title())
 
 
 
@@ -228,14 +288,39 @@ bike_orderlines_prices %>%
 
 # 7.1 spread(): Long to Wide ----
 
+bikeshop_revenue_formatted_tbl <- bikeshop_revenue_tbl %>% 
+    pivot_wider(names_from = category_1, values_from = sales) %>% 
+    arrange(Mountain %>% desc()) %>% 
+    rename(`Bikeshop Name` = bikeshop_name) %>% 
+    
+    mutate(
+        Mountain = scales::dollar(Mountain),
+        Road     = scales::dollar(Road, prefix = "R$ ", big.mark = ".", decimal.mark = ",")
+    )
+
+bikeshop_revenue_formatted_tbl
+
 
 # 7.2 gather(): Wide to Long ----
 
+bikeshop_revenue_formatted_tbl %>% 
+    pivot_longer(cols = c("Mountain", "Road"), 
+                 names_to = "category_1", 
+                 values_to = "sales") %>% 
+    
+    mutate(sales = sales %>% str_remove_all("\\$|,|R|\\.") %>% str_trim() %>% as.double()) %>% 
+    arrange(desc(sales))
 
 
 
 # 8.0 Joining Data by Key(s) with left_join() (e.g. VLOOKUP in Excel) ----
 
+orderlines_tbl
+
+bikes_tbl
+
+orderlines_tbl %>% 
+    left_join(bikes_tbl, by = c("product.id" = "bike.id"))
 
 
 
@@ -243,10 +328,52 @@ bike_orderlines_prices %>%
 
 # 9.1 bind_cols() ----
 
-
+bike_orderlines_tbl %>% 
+    select(-contains("order")) %>% 
+    
+    bind_cols(
+        bike_orderlines_tbl %>% select(order_id)
+    )
 
 
 # 9.2 bind_rows() ----
 
+train_tbl <- bike_orderlines_tbl %>% 
+    slice(1:(nrow(.)/2))
+
+train_tbl
+
+test_tbl <- bike_orderlines_tbl %>% 
+    slice((nrow(.)/2+1):nrow(.))
+
+test_tbl
+
+
+train_tbl %>% 
+    bind_rows(test_tbl)
+
+
+# 10 Separate & Unite ----
+
+bike_orderlines_tbl %>% 
+    select(order_date) %>% 
+    mutate(order_date = as.character(order_date)) %>% 
+    
+    # separate
+    separate(
+        order_date,
+        into    = c("year", "month", "day"),
+        sep     = "-", 
+        remove  = FALSE
+    ) %>% 
+    mutate(
+        year  = as.numeric(year),
+        month = as.numeric(month),
+        day   = as.numeric(day)
+    ) %>% 
+    
+    # unite
+    unite(order_date_united, year, month, day, sep = "-", remove = FALSE) %>% 
+    mutate(order_date_united = as.Date(order_date_united))
 
 
