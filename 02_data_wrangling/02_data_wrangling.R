@@ -96,15 +96,115 @@ bikes_tbl %>%
 
 # 3.1 filter(): formula filtering ----
 
+bikes_tbl %>% 
+    select(model, price) %>% 
+    filter(price > 1500)
+
+bikes_tbl %>% 
+    select(model, price) %>% 
+    filter(price > mean(price))
+
+bikes_tbl %>% 
+    select(model, price) %>% 
+    filter((price > 1500) | (price < 1000)) %>% 
+    arrange(desc(price)) %>% 
+    View()
+    
+bikes_tbl %>% 
+    select(model, price) %>% 
+    filter(price > 6000, 
+           model %>% str_detect("Supersix"))
+
+
+# Filtering One or More Conditions Exactly Using == and %in%
+
+bike_orderlines_tbl %>% 
+    filter(category_2 %in% c("Over Mountain", "Trail", "Endurance Road"))
+
+bike_orderlines_tbl %>% 
+    filter(category_2 == "Over Mountain")
+
+bike_orderlines_tbl %>% 
+    filter(category_2 != "Over Mountain")
+
+bike_orderlines_tbl %>% 
+    filter(!(category_2 %in% c("Over Mountain", "Trail", "Endurance Road")))
 
 
 # 3.2 slice(): filtering with row number(s) ----
 
+bikes_tbl %>% 
+    arrange(desc(price)) %>% 
+    slice(1:5)
+
+bikes_tbl %>% 
+    arrange(price) %>% 
+    slice(1:5)
+
+bikes_tbl %>% 
+    arrange(desc(price)) %>% 
+    slice((nrow(.)-4):nrow(.))
 
 
+# 3.3 distinct: Unique values ----
+
+bike_orderlines_tbl %>% 
+    distinct(category_1)
+
+bike_orderlines_tbl %>% 
+    distinct(category_1, category_2)
+
+bike_orderlines_tbl %>% 
+    distinct(bikeshop_name, city, state)
 
 
 # 4.0 Adding Columns with mutate() ----
+
+# Adding column
+bike_orderlines_prices <- bike_orderlines_tbl %>% 
+    select(order_date, model, quantity, price) %>% 
+    mutate(total_price = quantity * price)
+
+bike_orderlines_prices
+
+# Overwrite Column
+bike_orderlines_prices %>% 
+    mutate(total_price = log(quantity * price)) 
+
+# Transformations
+bike_orderlines_prices %>% 
+    mutate(total_price_log = log(total_price)) %>% 
+    mutate(total_price_sqrt = total_price^0.5)
+
+# Adding Flag
+bike_orderlines_prices %>% 
+    mutate(is_supersix = model %>% str_to_lower() %>% str_detect("supersix")) %>% 
+    filter(is_supersix)
+
+
+# Binning with ntile()
+bike_orderlines_prices %>% 
+    mutate(total_price_binned = ntile(total_price, 3)) 
+
+# case_when() - more flexible binning
+
+# Numeric to Categorical
+bike_orderlines_prices %>% 
+    mutate(total_price_binned = ntile(total_price, 3)) %>% 
+    mutate(total_price_binned2 = case_when(
+        total_price > quantile(total_price, 0.75) ~ "High",
+        total_price > quantile(total_price, 0.25) ~ "Medium",
+        TRUE ~ "Low"
+    ))
+
+# Text to Categorical
+bike_orderlines_prices %>% 
+    mutate(bike_type = case_when(
+        model %>% str_to_lower() %>% str_detect("supersix") ~ "Supersix",
+        model %>% str_to_lower() %>% str_detect("jekyll") ~ "Jekyll",
+        TRUE ~ "Not Supersix or Jekyll"
+    ))
+
 
 
 
