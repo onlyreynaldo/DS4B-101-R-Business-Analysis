@@ -182,13 +182,13 @@ bike_orderlines_prices %>%
     filter(is_supersix)
 
 
-# Binning with ntile()
+# 4.1 Binning with ntile() ----
 bike_orderlines_prices %>% 
     mutate(total_price_binned = ntile(total_price, 3)) 
 
 # case_when() - more flexible binning
 
-# Numeric to Categorical
+# 4.1.1 Numeric to Categorical ----
 bike_orderlines_prices %>% 
     mutate(total_price_binned = ntile(total_price, 3)) %>% 
     mutate(total_price_binned2 = case_when(
@@ -197,7 +197,7 @@ bike_orderlines_prices %>%
         TRUE ~ "Low"
     ))
 
-# Text to Categorical
+# 4.1.2 Text to Categorical ----
 bike_orderlines_prices %>% 
     mutate(bike_type = case_when(
         model %>% str_to_lower() %>% str_detect("supersix") ~ "Supersix",
