@@ -220,7 +220,6 @@ bike_outliers_tbl %>%
 #  - Goal: Want to simplify the text feature engineering steps to convert model name to features
 
 
-
 # Pipeline Comes From 02_data_wrangling/04_text.R
 bikes_tbl %>%
     
@@ -281,8 +280,79 @@ bikes_tbl %>%
     )
 
 
+bikes_tbl
 
+separate_bike_model <- function(data, keep_model_column = TRUE, append = TRUE) {
+    
+    if (!append) {
+        data <- data %>% select(model)
+    }
+    
+    # Pipeline
+    output_tbl <- data %>%
+        
+        # Fix typo
+        mutate(model = case_when(
+            model == "CAAD Disc Ultegra" ~ "CAAD12 Disc Ultegra",
+            model == "Syapse Carbon Tiagra" ~ "Synapse Carbon Tiagra",
+            model == "Supersix Evo Hi-Mod Utegra" ~ "Supersix Evo Hi-Mod Ultegra",
+            TRUE ~ model
+        )) %>%
+        
+        # separate using spaces
+        separate(col     = model, 
+                 into    = str_c("model_", 1:7), 
+                 sep     = " ", 
+                 remove  = FALSE, 
+                 fill    = "right") %>%
+        
+        # creating a "base" feature
+        mutate(model_base = case_when(
+            
+            # Fix Supersix Evo
+            str_detect(str_to_lower(model_1), "supersix") ~ str_c(model_1, model_2, sep = " "),
+            
+            # Fix Fat CAAD bikes
+            str_detect(str_to_lower(model_1), "fat") ~ str_c(model_1, model_2, sep = " "),
+            
+            # Fix Beast of the East
+            str_detect(str_to_lower(model_1), "beast") ~ str_c(model_1, model_2, model_3, model_4, sep = " "),
+            
+            # Fix Bad Habit
+            str_detect(str_to_lower(model_1), "bad") ~ str_c(model_1, model_2, sep = " "),
+            
+            # Fix Scalpel 29
+            str_detect(str_to_lower(model_2), "29") ~ str_c(model_1, model_2, sep = " "),
+            
+            # catch all
+            TRUE ~ model_1)
+        ) %>%
+        
+        # Get "tier" feature
+        mutate(model_tier = model %>% str_replace(model_base, replacement = "") %>% str_trim()) %>%
+        
+        # Remove unnecessary columns
+        select(-matches("model_[0-9]")) %>%
+        
+        # Create Flags
+        mutate(
+            black     = model_tier %>% str_to_lower() %>% str_detect("black") %>% as.numeric(),
+            hi_mod    = model_tier %>% str_to_lower() %>% str_detect("hi-mod") %>% as.numeric(),
+            team      = model_tier %>% str_to_lower() %>% str_detect("team") %>% as.numeric(),
+            red       = model_tier %>% str_to_lower() %>% str_detect("red") %>% as.numeric(),
+            ultegra   = model_tier %>% str_to_lower() %>% str_detect("ultegra") %>% as.numeric(),
+            dura_ace  = model_tier %>% str_to_lower() %>% str_detect("dura ace") %>% as.numeric(),
+            disc      = model_tier %>% str_to_lower() %>% str_detect("disc") %>% as.numeric()
+        )
+    
+    if(!keep_model_column) output_tbl <- output_tbl %>% select(-model)
+    
+    return(output_tbl)
+    
+}
 
+bikes_tbl %>% 
+    separate_bike_model(keep_model_column = TRUE, append = TRUE) 
 
 
 
@@ -290,14 +360,41 @@ bikes_tbl %>%
 
 # 6.1 Create folder and file ----
 
+path <- "00_scripts/separate_bike_model_and_outlier_detection.R"
+fs::file_create(path)
 
 
 # 6.2 Build and add header ----
+file_header_text <- str_glue(
+"
+# SEPARATE BIKE MODEL AND DETECT OUTLIERS ----
+    
+# separate_bike_model(): A tidy function to separate the model column into engineered features
+    
+# detect_outliers(): A vectorized function that detects outliers using TRUE/FALSE output.
+    
+# Libraries ----
+library(tidyverse)
+    
+"
+)
 
+readr::write_lines(file_header_text, path = path)
 
 
 # 6.3 Add functions with dump() ----
 
+c("separate_bike_model", "detect_outliers") %>% 
+    dump(file = "00_scripts/separate_bike_model_and_outlier_detection.R", 
+         append = TRUE)
 
 
 # 6.4 Source function ----
+
+rm("separate_bike_model")
+rm("detect_outliers")
+
+source("00_scripts/separate_bike_model_and_outlier_detection.R")
+
+bikes_tbl %>% 
+    separate_bike_model()
