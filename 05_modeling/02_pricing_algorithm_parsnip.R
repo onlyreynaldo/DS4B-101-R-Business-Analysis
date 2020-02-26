@@ -233,7 +233,7 @@ model_03_linear_glmnet$fit %>%
 ?rpart::rpart
 
 model_04_tree_decision_tree <- decision_tree(mode = "regression", 
-                                             cost_complexity = 0.1, 
+                                             cost_complexity = 0.01, 
                                              tree_depth      = 7, 
                                              min_n           = 10) %>% 
     set_engine("rpart") %>% 
@@ -246,7 +246,17 @@ model_04_tree_decision_tree %>%
 ?rpart.plot()
 
 model_04_tree_decision_tree$fit %>% 
-    rpart.plot(roundint = FALSE)
+    rpart.plot(roundint = FALSE, 
+               type = 4, 
+               extra = 101, 
+               fallen.leaves = FALSE, 
+               cex = 0.5, 
+               main = "Model 04: Decision Tree", 
+               box.palette = "Purples")
+
+# available palletes on {rpart.plot}
+show.prp.palettes()
+
 
 # 4.2 RANDOM FOREST ----
 
@@ -254,22 +264,58 @@ model_04_tree_decision_tree$fit %>%
 ?rand_forest()
 ?ranger::ranger
 
+set.seed(1234)
+model_05_rand_forest_ranger <- rand_forest(mode  = "regression", 
+                                           mtry  = 10, 
+                                           trees = 1000, 
+                                           min_n = 15) %>% 
+    set_engine(engine     = "ranger", 
+               replace    = TRUE, 
+               splitrule  = "extratrees", 
+               importance = "impurity") %>% 
+    fit(price ~ ., data = train_tbl %>% select(-id, -model, -model_tier))
+
+model_05_rand_forest_ranger %>% 
+    calc_metrics(test_tbl)
 
 
 # 4.2.2 ranger: Feature Importance ----
-
-
-
+model_05_rand_forest_ranger$fit %>% 
+    ranger::importance() %>% 
+    enframe() %>% 
+    arrange(value %>% desc()) %>% 
+    mutate(name = as_factor(name) %>% fct_rev()) %>% 
+    
+    ggplot(aes(value, name)) +
+    geom_point() +
+    labs(title = "ranger: Variable Importance", 
+         subtitle = "Model 05: Ranger Random Forest Model")
+    
 
 # 4.2.3 Model randomForest ----
 ?rand_forest()
 ?randomForest::randomForest
 
-
+set.seed(1234)
+model_06_rand_forest_randomForest <- rand_forest(mode  = "regression") %>% 
+    set_engine("randomForest") %>% 
+    fit(price ~ ., data = train_tbl %>% select(-id, -model, -model_tier))
+    
+model_06_rand_forest_randomForest %>% 
+    calc_metrics(test_tbl)
 
 # 4.2.4 randomForest: Feature Importance ----
 
-
+model_06_rand_forest_randomForest$fit %>% 
+    randomForest::importance() %>% 
+    as_tibble(rownames = "name") %>% 
+    arrange(IncNodePurity %>% desc) %>% 
+    mutate(name = as_factor(name) %>% fct_rev()) %>% 
+    
+    ggplot(aes(IncNodePurity, name)) +
+    geom_point() %>% 
+    labs(title = "randomForest: Variable Importance", 
+         subtitle = "Model 06: randomForest Model")
 
 
 # 4.3 XGBOOST ----
@@ -278,11 +324,31 @@ model_04_tree_decision_tree$fit %>%
 ?boost_tree
 ?xgboost::xgboost
 
+set.seed(1234)
+model_07_boost_tree_xgboost <- boost_tree(mode = "regression", 
+                                          mtry = 30,
+                                          learn_rate = 0.3) %>% 
+    set_engine("xgboost") %>% 
+    fit(price ~ ., data = train_tbl %>% select(-id, -model, -model_tier))
+
+model_07_boost_tree_xgboost %>% 
+    calc_metrics(test_tbl)
 
 
 # 4.3.2 Feature Importance ----
 
-
+model_07_boost_tree_xgboost$fit %>% 
+    xgboost::xgb.importance(model = .) %>% 
+    as_tibble() %>%
+    arrange(desc(Gain)) %>% 
+    mutate(Feature = as_factor(Feature) %>% fct_rev()) %>% 
+    
+    ggplot(aes(Gain, Feature)) +
+    geom_point() +
+    labs(
+        title = "XGBoost: Variable Importance",
+        subtitle = "Model 07: XGBoost Model"
+    )
 
 
 
