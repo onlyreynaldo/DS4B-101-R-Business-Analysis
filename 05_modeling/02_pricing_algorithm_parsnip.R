@@ -183,7 +183,7 @@ model_02_linear_lm_complex %>%
 # 3.2.2 Feature importance ----
 model_02_linear_lm_complex$fit %>% 
     broom::tidy() %>% 
-    arrange(p.value) %>% 
+    arrange(p.value) %>% View()
     mutate(term = as_factor(term) %>% fct_rev()) %>% 
     
     ggplot(aes(x = estimate, y = term)) +
@@ -350,11 +350,38 @@ model_07_boost_tree_xgboost$fit %>%
         subtitle = "Model 07: XGBoost Model"
     )
 
+# 4.3.1 5-fold Cross-Validation ----
+library(tune)
+train <- train_tbl %>% select(-id, -model, -model_tier) %>% 
+    mutate_if(is.character, as_factor)
+
+set.seed(1234)
+cvfolds_05 <- vfold_cv(train, v = 5, strata = model_base)
+
+xgb_spec <- boost_tree("regression") %>% 
+    set_engine("xgboost")
+
+cv_results <- fit_resamples(
+    price ~ ., 
+    xgb_spec,
+    cvfolds_05,
+    metrics = metric_set(mae, rmse),
+    control = control_resamples(save_pred = TRUE)
+)
+
+cv_results %>% 
+    collect_metrics()
+
+cv_results %>% 
+    unnest(.metrics) %>% 
+    select(id, .metric, .estimate) %>% 
+    spread(.metric, .estimate)
+
 
 
 # 5.0 TESTING THE ALGORITHMS OUT ----
 
-bike_features_tbl %>%
+g1 <- bike_features_tbl %>%
     mutate(category_2 = as_factor(category_2) %>% 
                fct_reorder(price)) %>%
     
@@ -369,6 +396,8 @@ bike_features_tbl %>%
         title = "Unit Price for Each Model",
         y = "", x = "Category 2"
     )
+
+g1
 
 # 5.1 NEW JEKYLL MODEL ----
 
@@ -387,14 +416,53 @@ new_over_mountain_jekyll <- tibble(
     disc       = 0
 ) 
 
+new_over_mountain_jekyll
 
 # Linear Methods ----
 
+model_03_linear_glmnet %>% 
+    predict(new_data = new_over_mountain_jekyll)
 
 
 # Tree-Based Methods ----
 
+model_07_boost_tree_xgboost %>% 
+    predict(new_data = new_over_mountain_jekyll)
 
+
+# Interating Predictions for Every Fitted Model ----
+models_tbl <- tibble(
+    model_id = str_c("Model 0", 1:7), 
+    model = list(
+        model_01_linear_lm_simple,
+        model_02_linear_lm_complex,
+        model_03_linear_glmnet,
+        model_04_tree_decision_tree,
+        model_05_rand_forest_ranger,
+        model_06_rand_forest_randomForest,
+        model_07_boost_tree_xgboost
+    )
+)
+
+models_tbl
+
+# Add Predictions
+predictions_new_over_mountain_tbl <- models_tbl %>% 
+    mutate(predictions = map(model, predict, new_data = new_over_mountain_jekyll)) %>% 
+    unnest(predictions) %>% 
+    mutate(category_2 = "Over Mountain") %>% 
+    left_join(new_over_mountain_jekyll, by = "category_2")
+
+predictions_new_over_mountain_tbl
+
+# update figure
+g2 <- g1 +
+    geom_point(data = predictions_new_over_mountain_tbl, aes(y = .pred), 
+               color = "red", alpha = 0.5) +
+    ggrepel::geom_text_repel(aes(label = model_id, y = .pred), 
+                             data = predictions_new_over_mountain_tbl, 
+                             size = 3)
+    
 
 
 
@@ -419,12 +487,30 @@ new_triathalon_slice_tbl <- tibble(
 
 # Linear Methods ----
 
+model_03_linear_glmnet %>% 
+    predict(new_triathalon_slice_tbl)
 
 # Tree-Based Methods ----
+model_07_boost_tree_xgboost %>% 
+    predict(new_triathalon_slice_tbl)
 
 
+predictions_new_triathalon_tbl <- models_tbl %>% 
+    mutate(predictions = map(model, ~ predict(.x, new_data = new_triathalon_slice_tbl))) %>% 
+    unnest(predictions) %>% 
+    mutate(category_2 = "Triathalon", frame_material = "Aluminum")
 
+predictions_new_triathalon_tbl
 
+# Update plot
+g2 +
+    geom_point(data = predictions_new_triathalon_tbl, 
+               aes(y = .pred), 
+               color = "red", 
+               alpha = 0.5) +
+    ggrepel::geom_text_repel(data = predictions_new_triathalon_tbl, 
+                             aes(y = .pred, label = model_id), 
+                             size = 3)
 
 
 # 6.0 ADDITIONAL ADVANCED CONCEPTS ----
@@ -440,5 +526,109 @@ new_triathalon_slice_tbl <- tibble(
 # - AUTOMATIC MACHINE LEARNING - H2O
 
 
+# 7.0 BONUS: {recipes} and svm-regression ----
+library(recipes)
+
+?recipe
+?step_dummy
+?prep
+?bake
+
+recipe_obj <- recipe(price ~ ., data = train_tbl) %>% 
+    step_rm(id, model, model_tier) %>% 
+    step_dummy(all_nominal(), one_hot = TRUE) %>% 
+    step_log(price) %>% 
+    step_center(price) %>% 
+    step_scale(price) %>% 
+    prep()
+
+# Preprocessing the train_tbl
+# first way
+recipe_obj %>% bake(train_tbl)
+
+# second way
+recipe_obj %>% juice()
+
+# Transforming the data sets
+train_transformed_tbl <- bake(recipe_obj, train_tbl)
+test_transformed_tbl  <- bake(recipe_obj, test_tbl)
+
+tidy(recipe_obj)
+scale <- tidy(recipe_obj, 5)
+center <- tidy(recipe_obj, 4)
+
+# SVM: Radial Basis
+?svm_rbf
+?kernlab::ksvm
+
+model_08_svm_rbf <- svm_rbf(mode = "regression", cost = 10, rbf_sigma = 0.1, margin = 0.1) %>% 
+    set_engine("kernlab", scale = FALSE) %>% 
+    fit(price ~ ., data = train_transformed_tbl)
+
+model_08_svm_rbf %>% 
+    predict(new_data = test_transformed_tbl) %>% 
+    # Transforming back the price column
+    mutate(.pred = exp(.pred*scale$value + center$value)) %>% 
+    bind_cols(
+        test_tbl %>% select(price)
+    ) %>% 
+    yardstick::metrics(truth = price, estimate = .pred)
 
 
+# Predictions
+recipe_obj %>% 
+    bake(new_over_mountain_jekyll) %>% 
+    predict(model_08_svm_rbf, new_data = .) %>% 
+    mutate(.pred = exp(.pred*scale$value + center$value))
+
+recipe_obj %>% 
+    bake(new_triathalon_slice_tbl) %>% 
+    predict(model_08_svm_rbf, new_data = .) %>% 
+    mutate(.pred = exp(.pred*scale$value + center$value))
+
+
+bike_features_tbl %>% 
+    filter(category_2 == "Endurance Road") %>% 
+    arrange(price)
+ 
+   
+# 8.0 SAVING AND LOADING MODELS ----
+
+#fs::dir_create("00_models")
+
+# 8.1 Saving the model ----
+models_tbl <- list(
+    "MODEL_01__LM_SIMPLE" = model_01_linear_lm_simple,
+    "MODEL_02__LM_COMPLEX" = model_02_linear_lm_complex,
+    "MODEL_03__GLMNET" = model_03_linear_glmnet,
+    "MODEL_04__DECISION_TREE" = model_04_tree_decision_tree,
+    "MODEL_05__RF_RANGER" = model_05_rand_forest_ranger,
+    "MODEL_06__RF_RANDOMFOREST" = model_06_rand_forest_randomForest,
+    "MODEL_07__XGBOOST" = model_07_boost_tree_xgboost,
+    "MODEL_08__SVM" = model_08_svm_rbf
+) %>% 
+    enframe(name = "model_id", value = "model")
+
+models_tbl %>% 
+    write_rds("00_models/parsnip_models_tbl.rds")
+
+# 8.2 Saving the recipe object ----
+recipes_tbl <- list(
+    "RECIPE_01" = recipe_obj
+) %>% 
+    enframe(name = "recipe_id", value = "recipe")
+
+recipes_tbl %>% 
+    write_rds("00_models/recipes_tbl.rds")
+
+# 8.3 Saving the metrics function ----
+calc_metrics %>% 
+    write_rds("00_scripts/calc_metrics.rds")
+
+# Reading the saved objects
+
+models_tbl <- read_rds("00_models/parsnip_models_tbl.rds")
+
+recipes_tbl <- read_rds("00_models/recipes_tbl.rds")
+
+calc_metrics <- read_rds("00_scripts/calc_metrics.rds")
